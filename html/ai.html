@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blackjack 21</title>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #0b3d2e;
+  color: white;
+  text-align: center;
+  margin: 0;
+}
+
+h1 { margin-top: 20px; }
+
+.cards {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 10px;
+  flex-wrap: wrap;
+}
+
+/* CARD FLIP */
+.card {
+  width: 70px;
+  height: 90px;
+  perspective: 1000px;
+}
+
+.card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.6s;
+  transform-style: preserve-3d;
+}
+
+.card.flipped .card-inner {
+  transform: rotateY(180deg);
+}
+
+.card-face {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  backface-visibility: hidden;
+}
+
+.card-front {
+  background: white;
+  color: black;
+}
+
+.card-back {
+  background: #222;
+  color: #222;
+  transform: rotateY(180deg);
+}
+
+button {
+  padding: 22px 32px;
+  margin: 10px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 22px;
+}
+
+.hit { background: #4caf50; color: white; }
+.stand { background: #f44336; color: white; }
+
+#bet-buttons { margin: 15px 0; }
+
+.chip {
+  display: inline-block;
+  padding: 12px 18px;
+  margin: 6px;
+  border-radius: 50px;
+  font-weight: bold;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.2s;
+}
+.chip:hover { transform: scale(1.08); }
+
+.chip.white { background: #ffffff; color: black; }
+.chip.red { background: #e53935; color: white; }
+.chip.green { background: #43a047; color: white; }
+.chip.blue { background: #1e88e5; color: white; }
+
+#home-link {
+  display: inline-block;
+  margin: 14px 0 0;
+  color: #a8d5b5;
+  font-size: 0.9rem;
+  text-decoration: none;
+  letter-spacing: 0.04em;
+  opacity: 0.8;
+}
+#home-link:hover { opacity: 1; text-decoration: underline; }
+
+@media (max-width: 600px) {
+  button { width: 90%; }
+  .chip { display: block; margin: 10px auto; }
+}
+
+/* BANKRUPT OVERLAY */
+#bankrupt-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.88);
+  z-index: 999;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+#bankrupt-overlay.show {
+  display: flex;
+}
+
+#bankrupt-overlay h1 {
+  font-size: clamp(3rem, 14vw, 8rem);
+  font-weight: 900;
+  color: #e53935;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0 0 16px;
+  text-shadow: 0 0 40px rgba(229, 57, 53, 0.6);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+
+#bankrupt-overlay p {
+  font-size: 1.2rem;
+  color: #ccc;
+  margin: 0 0 28px;
+}
+
+#bankrupt-overlay button {
+  background: #e53935;
+  color: white;
+  font-size: 1.1rem;
+  padding: 14px 36px;
+  border-radius: 10px;
+  cursor: pointer;
+  border: none;
+}
+
+#bankrupt-overlay button:hover {
+  background: #c62828;
+}
+</style>
+</head>
+<body>
+
+<a id="home-link" href="../scratch.html">&#8592; Home Page</a>
+
+<h1>Blackjack (21)</h1>
+
+<h2>Bank: $<span id="bank">100</span></h2>
+<h3>Bet: $<span id="bet">0</span></h3>
+
+<h2>Dealer (<span id="dealer-score">?</span>)</h2>
+<div id="dealer-cards" class="cards"></div>
+
+<h2>You (<span id="player-score">0</span>)</h2>
+<div id="player-cards" class="cards"></div>
+
+<h2 id="result"></h2>
+
+<div id="bet-buttons">
+  <div class="chip white" onclick="placeBet(1)">$1</div>
+  <div class="chip red" onclick="placeBet(5)">$5</div>
+  <div class="chip green" onclick="placeBet(10)">$10</div>
+  <div class="chip blue" onclick="placeBet(20)">$20</div>
+</div>
+
+<div>
+  <button class="hit" onclick="hit()">Hit</button>
+  <button class="stand" onclick="stand()">Stand</button>
+</div>
+
+<!-- BANKRUPT OVERLAY -->
+<div id="bankrupt-overlay">
+  <h1>BANKRUPT</h1>
+  <p>You're out of chips. Better luck next time.</p>
+  <button onclick="resetGame()">Play Again</button>
+</div>
+
+<script>
+let deck, playerHand, dealerHand, gameOver, revealDealer;
+let bank = 100;
+let bet = 0;
+
+function updateUI() {
+  document.getElementById('bank').textContent = bank;
+  document.getElementById('bet').textContent = bet;
+
+  if (bank <= 0 && bet === 0) {
+    showBankrupt();
+  }
+}
+
+function showBankrupt() {
+  document.getElementById('bankrupt-overlay').classList.add('show');
+  document.querySelectorAll('button').forEach(b => b.disabled = true);
+  document.querySelectorAll('.chip').forEach(c => c.style.pointerEvents = 'none');
+}
+
+function resetGame() {
+  bank = 100;
+  bet = 0;
+  gameOver = true;
+  revealDealer = false;
+  document.getElementById('bankrupt-overlay').classList.remove('show');
+  document.getElementById('dealer-cards').innerHTML = '';
+  document.getElementById('player-cards').innerHTML = '';
+  document.getElementById('result').textContent = '';
+  document.getElementById('dealer-score').textContent = '?';
+  document.getElementById('player-score').textContent = '0';
+  document.querySelectorAll('button').forEach(b => b.disabled = false);
+  document.querySelectorAll('.chip').forEach(c => c.style.pointerEvents = '');
+  updateUI();
+}
+
+function placeBet(amount) {
+  if (bet !== 0 || bank < amount) return;
+  bet = amount;
+  bank -= amount;
+  updateUI();
+  startGame();
+}
+
+function createDeck() {
+  const suits = ['♠','♥','♦','♣'];
+  const values = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+  let deck = [];
+  for (let s of suits) {
+    for (let v of values) {
+      deck.push({ value: v, suit: s });
+    }
+  }
+  return deck.sort(() => Math.random() - 0.5);
+}
+
+function getCardValue(card) {
+  if (['J','Q','K'].includes(card.value)) return 10;
+  if (card.value === 'A') return 11;
+  return parseInt(card.value);
+}
+
+function calculateScore(hand) {
+  let score = 0;
+  let aces = 0;
+  for (let c of hand) {
+    score += getCardValue(c);
+    if (c.value === 'A') aces++;
+  }
+  while (score > 21 && aces > 0) {
+    score -= 10;
+    aces--;
+  }
+  return score;
+}
+
+function isBlackjack(hand) {
+  return hand.length === 2 && calculateScore(hand) === 21;
+}
+
+function isSoft17(hand) {
+  let score = 0, aces = 0;
+  for (let c of hand) {
+    if (c.value === 'A') { score += 11; aces++; }
+    else if (['J','Q','K'].includes(c.value)) score += 10;
+    else score += parseInt(c.value);
+  }
+  while (score > 21 && aces > 0) { score -= 10; aces--; }
+  return score === 17 && aces > 0;
+}
+
+function createCardElement(card, hidden=false) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'card';
+
+  const inner = document.createElement('div');
+  inner.className = 'card-inner';
+
+  const front = document.createElement('div');
+  front.className = 'card-face card-front';
+  front.textContent = card.value + card.suit;
+
+  const back = document.createElement('div');
+  back.className = 'card-face card-back';
+
+  inner.appendChild(front);
+  inner.appendChild(back);
+
+  if (hidden) wrapper.classList.add('flipped');
+
+  wrapper.appendChild(inner);
+  return wrapper;
+}
+
+function render() {
+  const d = document.getElementById('dealer-cards');
+  const p = document.getElementById('player-cards');
+
+  d.innerHTML = '';
+  p.innerHTML = '';
+
+  dealerHand.forEach((c, i) => {
+    const hidden = (i === 0 && !revealDealer);
+    d.appendChild(createCardElement(c, hidden));
+  });
+
+  playerHand.forEach(c => p.appendChild(createCardElement(c, false)));
+
+  document.getElementById('player-score').textContent = calculateScore(playerHand);
+  document.getElementById('dealer-score').textContent = revealDealer ? calculateScore(dealerHand) : '?';
+}
+
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+async function dealInitialCards(){
+  playerHand=[]; dealerHand=[];
+
+  for(let i=0;i<2;i++){
+    playerHand.push(deck.pop()); render(); await sleep(300);
+    dealerHand.push(deck.pop()); render(); await sleep(300);
+  }
+
+  checkBlackjack();
+}
+
+function checkBlackjack(){
+  const p=isBlackjack(playerHand), d=isBlackjack(dealerHand);
+
+  if(p||d){
+    revealDealer=true;
+
+    if(p&&!d){ bank+=bet*2.5; endGame('Blackjack! You Win!'); }
+    else if(d&&!p){ endGame('Dealer Blackjack!'); }
+    else { bank+=bet; endGame('Push!'); }
+
+    bet=0; updateUI();
+  }
+}
+
+async function startGame(){
+  deck=createDeck();
+  gameOver=false;
+  revealDealer=false;
+  document.getElementById('result').textContent='';
+  await dealInitialCards();
+}
+
+function hit(){
+  if(gameOver)return;
+  playerHand.push(deck.pop());
+  render();
+
+  if(calculateScore(playerHand)>21){
+    revealDealer=true;
+    endGame('You Bust!');
+    bet=0; updateUI();
+  }
+}
+
+async function stand(){
+  if(gameOver)return;
+
+  revealDealer=true;
+  render(); await sleep(500);
+
+  while(calculateScore(dealerHand)<17 || isSoft17(dealerHand)){
+    dealerHand.push(deck.pop());
+    render(); await sleep(400);
+
+    if(calculateScore(dealerHand) === 21 && calculateScore(playerHand) !== 21){
+      resolveGame();
+      return;
+    }
+  }
+
+  resolveGame();
+}
+
+function resolveGame(){
+  const ps=calculateScore(playerHand);
+  const ds=calculateScore(dealerHand);
+
+  if(ds === 21 && ps !== 21){
+    endGame('Dealer hits 21! Dealer Wins!');
+    bet=0; updateUI();
+    return;
+  }
+
+  if(ds>21||ps>ds){ bank+=bet*2; endGame('You Win!'); }
+  else if(ps<ds){ endGame('Dealer Wins!'); }
+  else { bank+=bet; endGame('Push!'); }
+
+  bet=0; updateUI();
+}
+
+function endGame(msg){
+  gameOver=true;
+  document.getElementById('result').textContent=msg;
+  render();
+}
+
+updateUI();
+</script>
+
+</body>
+</html>
