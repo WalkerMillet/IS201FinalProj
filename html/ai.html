@@ -217,23 +217,34 @@ function updateUI() {
 
 function showBankrupt() {
   document.getElementById('bankrupt-overlay').classList.add('show');
-  document.querySelectorAll('button').forEach(b => b.disabled = true);
+
+  // Disable only game controls, NOT the overlay button
+  document.querySelectorAll('body > button').forEach(b => b.disabled = true);
+
   document.querySelectorAll('.chip').forEach(c => c.style.pointerEvents = 'none');
 }
 
 function resetGame() {
   bank = 100;
   bet = 0;
-  gameOver = true;
+
+  deck = [];
+  playerHand = [];
+  dealerHand = [];
+
+  gameOver = false; // ✅ FIXED (was true)
   revealDealer = false;
+
   document.getElementById('bankrupt-overlay').classList.remove('show');
   document.getElementById('dealer-cards').innerHTML = '';
   document.getElementById('player-cards').innerHTML = '';
   document.getElementById('result').textContent = '';
   document.getElementById('dealer-score').textContent = '?';
   document.getElementById('player-score').textContent = '0';
+
   document.querySelectorAll('button').forEach(b => b.disabled = false);
   document.querySelectorAll('.chip').forEach(c => c.style.pointerEvents = '');
+
   updateUI();
 }
 
